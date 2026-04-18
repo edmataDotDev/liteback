@@ -9,6 +9,8 @@ datasource db {
 /// Auth identity (credentials). Table `users` avoids the PostgreSQL reserved name `user`.
 model User {
   id           Int      @id @default(autoincrement())
+  /// Opaque identifier for APIs/JWT `sub` (not the internal PK).
+  publicId     String   @unique @default(dbgenerated("gen_random_uuid()")) @map("public_id") @db.Uuid
   email        String   @unique
   passwordHash String   @map("password_hash")
   createdAt    DateTime @default(now()) @map("created_at")
