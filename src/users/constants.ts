@@ -1,16 +1,20 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { loadPemFromEnv } from '../libs/loadPemFromEnv';
 
-const privateKey = readFileSync(
-    join(process.cwd(), 'jwt-rs256-private.pem'),
-    'utf8',
+const privateKey = loadPemFromEnv(
+  process.env.JWT_RS256_PRIVATE_KEY,
+  'JWT_RS256_PRIVATE_KEY',
 );
-const publicKey = readFileSync(
-    join(process.cwd(), 'jwt-rs256-public.pem'),
-    'utf8',
+const publicKey = loadPemFromEnv(
+  process.env.JWT_RS256_PUBLIC_KEY,
+  'JWT_RS256_PUBLIC_KEY',
 );
 
 export const jwtConstants = {
-    privateKey,
-    publicKey
+  privateKey,
+  publicKey,
+} as const;
+
+export const JWT_SIGN_OPTIONS = {
+  algorithm: 'RS256' as const,
+  expiresIn: '15m' as const,
 };

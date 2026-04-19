@@ -3,13 +3,14 @@ import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { JwtModule } from '@nestjs/jwt';
-import { jwtConstants } from './constants';
+import { JWT_SIGN_OPTIONS, jwtConstants } from './constants';
 
 @Module({
   imports: [PrismaModule, JwtModule.register({
     global: true,
-    secret: jwtConstants.privateKey,
-    signOptions: { expiresIn: '15m' },
+    privateKey: jwtConstants.privateKey,
+    publicKey: jwtConstants.publicKey,
+    signOptions: JWT_SIGN_OPTIONS,
   })],
   controllers: [UsersController],
   providers: [UsersService],

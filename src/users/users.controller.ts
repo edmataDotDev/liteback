@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Post, UsePipes, ValidationPipe } from '@nestjs/common';
 import { UsersService } from './users.service';
-import { CreateUserDto, LoginUserDto } from './users.dto';
+import { CreateUserDto, LoginUserDto, RefreshTokenDto } from './users.dto';
 import { AuthTokens } from './users.types';
 
 @Controller('users')
@@ -17,5 +17,11 @@ export class UsersController {
     @UsePipes(new ValidationPipe({ transform: true }))
     register(@Body() newUser: CreateUserDto) {
         return this.usersService.register(newUser);
+    }
+
+    @Post('refresh')
+    @UsePipes(new ValidationPipe({ transform: true }))
+    refresh(@Body() refreshTokenDto: RefreshTokenDto) {
+        return this.usersService.refresh(refreshTokenDto);
     }
 }
