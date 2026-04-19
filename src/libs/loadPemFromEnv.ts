@@ -1,7 +1,10 @@
 /**
  * PEM read from `process.env` after dotenv parsing (real newlines or `\n` escapes).
  */
-export function loadPemFromEnv(raw: string | undefined, varName: string): string {
+export function loadPemFromEnv(
+  raw: string | undefined,
+  varName: string,
+): string {
   if (raw == null || raw.trim() === '') {
     throw new Error(`Missing required environment variable: ${varName}`);
   }

@@ -1,22 +1,27 @@
-import { Injectable, UnauthorizedException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  NotFoundException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto, LoginUserDto, RefreshTokenDto } from './users.dto';
 import { AuthTokens } from './users.types';
 import { JwtService } from '@nestjs/jwt';
 import { randomBytes } from 'node:crypto';
-import { generateHmac } from "../libs/generateHmac"
+import { generateHmac } from '../libs/generateHmac';
+import { JWT_AUDIENCE, JWT_ISSUER } from '../auth/jwt-claims';
 
 @Injectable()
 export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly jwtService: JwtService
-  ) { }
+    private readonly jwtService: JwtService,
+  ) {}
 
   async refresh({ refreshToken }: RefreshTokenDto): Promise<AuthTokens> {
     const tokenHash = generateHmac(refreshToken);
-    const probe = await this.prisma.refreshToken.findUnique({
+    const probe = await this.prisma.refreshToken.findFirst({
       where: { tokenHash },
       select: { id: true },
     });
@@ -49,7 +54,10 @@ export class UsersService {
         const session = row.session;
 
         if (session.revokedAt != null || session.expiresAt <= now) {
-          return { kind: 'unauthorized', message: 'Session invalid or expired' };
+          return {
+            kind: 'unauthorized',
+            message: 'Session invalid or expired',
+          };
         }
 
         if (row.rotatedAt != null) {
@@ -57,7 +65,10 @@ export class UsersService {
             where: { id: session.id },
             data: { revokedAt: now },
           });
-          return { kind: 'unauthorized', message: 'Refresh token reuse detected' };
+          return {
+            kind: 'unauthorized',
+            message: 'Refresh token reuse detected',
+          };
         }
 
         if (row.expiresAt <= now) {
@@ -84,7 +95,10 @@ export class UsersService {
             select: { rotatedAt: true },
           });
           if (afterRace?.rotatedAt != null) {
-            return { kind: 'unauthorized', message: 'Refresh already in progress' };
+            return {
+              kind: 'unauthorized',
+              message: 'Refresh already in progress',
+            };
           }
           return { kind: 'unauthorized', message: 'Refresh token invalid' };
         }
@@ -103,8 +117,8 @@ export class UsersService {
 
         const nowSec = Math.floor(now.getTime() / 1000);
         const accessToken = this.jwtService.sign({
-          iss: 'http://localhost:3000',
-          aud: 'general',
+          iss: JWT_ISSUER,
+          aud: JWT_AUDIENCE,
           sub: session.user.publicId,
           nbf: nowSec,
           iat: nowSec,
@@ -127,18 +141,17 @@ export class UsersService {
   }
 
   async login({ email, password }: LoginUserDto): Promise<AuthTokens> {
-
     const user = await this.prisma.user.findUnique({
       select: { id: true, publicId: true, email: true, passwordHash: true },
       where: {
-        email
-      }
+        email,
+      },
     });
 
     if (!user) {
       throw new UnauthorizedException('No valid credentials');
     }
-    const isSamePass = await bcrypt.compare(password, user?.passwordHash)
+    const isSamePass = await bcrypt.compare(password, user?.passwordHash);
 
     if (!isSamePass) {
       throw new UnauthorizedException('No valid credentials');
@@ -146,13 +159,12 @@ export class UsersService {
 
     const nowSec = Math.floor(Date.now() / 1000);
     const accessToken = this.jwtService.sign({
-      iss: "http://localhost:3000",
-      aud: "general",
+      iss: JWT_ISSUER,
+      aud: JWT_AUDIENCE,
       sub: user?.publicId,
       nbf: nowSec,
       iat: nowSec,
     });
-
 
     const refreshToken = randomBytes(32).toString('hex');
     await this.prisma.session.create({
@@ -163,21 +175,21 @@ export class UsersService {
           create: {
             tokenHash: generateHmac(refreshToken),
             expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-          }
-        }
-      }
-    })
+          },
+        },
+      },
+    });
 
     return {
       accessToken,
-      refreshToken
-    }
+      refreshToken,
+    };
   }
 
   async register(dto: CreateUserDto) {
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
-    const user = await this.prisma.user.create({
+    return this.prisma.user.create({
       data: {
         email: dto.email,
         passwordHash,
@@ -189,10 +201,13 @@ export class UsersService {
           },
         },
       },
-      include: { customers: true },
+      select: {
+        id: true,
+        publicId: true,
+        email: true,
+        createdAt: true,
+        customers: true,
+      },
     });
-
-    const { passwordHash: _removed, ...safe } = user;
-    return safe;
   }
 }

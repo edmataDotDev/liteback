@@ -21,17 +21,16 @@ model User {
   @@map("users")
 }
 
-/// Customer profile linked to a user (0..N per ERD).
+/// Customer profile linked to a user (one per user).
 model Customer {
   id        Int    @id @default(autoincrement())
   email     String
   firstName String @map("first_name")
   lastName  String @map("last_name")
-  userId    Int    @map("user_id")
+  userId    Int    @unique @map("user_id")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId])
   @@map("customers")
 }
 

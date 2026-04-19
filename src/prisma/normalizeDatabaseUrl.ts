@@ -14,11 +14,7 @@ export function normalizeDatabaseUrlForPgSslWarning(
       return connectionString;
     }
     const mode = u.searchParams.get('sslmode')?.toLowerCase();
-    if (
-      mode === 'require' ||
-      mode === 'prefer' ||
-      mode === 'verify-ca'
-    ) {
+    if (mode === 'require' || mode === 'prefer' || mode === 'verify-ca') {
       u.searchParams.set('sslmode', 'verify-full');
       return u.toString();
     }
