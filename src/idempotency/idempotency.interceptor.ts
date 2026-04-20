@@ -5,6 +5,7 @@ import {
   ExecutionContext,
   HttpException,
   Injectable,
+  Logger,
   NestInterceptor,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -24,6 +25,8 @@ type RequestWithUser = Request & { user?: { sub?: string } };
 
 @Injectable()
 export class IdempotencyInterceptor implements NestInterceptor {
+  private readonly logger = new Logger(IdempotencyInterceptor.name);
+
   constructor(
     private readonly reflector: Reflector,
     private readonly prisma: PrismaService,
@@ -71,17 +74,48 @@ export class IdempotencyInterceptor implements NestInterceptor {
                   responseBody: this.toJson(body),
                 },
               }),
-            ).pipe(mergeMap(() => of(body))),
+            ).pipe(
+              mergeMap(() => {
+                this.logIdempotencyLocally(
+                  idempotencyKey,
+                  request,
+                  'first_run_completed',
+                  { httpStatus: response.statusCode },
+                );
+                return of(body);
+              }),
+            ),
           ),
           catchError((error: unknown) =>
             from(this.persistFailure(idempotencyKey, error)).pipe(
-              mergeMap(() => throwError(() => error)),
+              mergeMap(() => {
+                const httpStatus =
+                  error instanceof HttpException ? error.getStatus() : 500;
+                this.logIdempotencyLocally(
+                  idempotencyKey,
+                  request,
+                  'first_run_failed_stored',
+                  { httpStatus },
+                );
+                return throwError(() => error);
+              }),
             ),
           ),
         ),
       ),
       catchError((error: unknown) => {
         if (!this.isUniqueViolation(error)) {
+          this.logIdempotencyLocally(
+            idempotencyKey,
+            request,
+            'idempotency_row_create_or_upstream_error',
+            {
+              error:
+                error instanceof Error
+                  ? error.message
+                  : String(error).slice(0, 120),
+            },
+          );
           return throwError(() => error);
         }
 
@@ -92,12 +126,24 @@ export class IdempotencyInterceptor implements NestInterceptor {
         ).pipe(
           mergeMap((existing) => {
             if (!existing) {
+              this.logIdempotencyLocally(
+                idempotencyKey,
+                request,
+                'replay_conflict',
+                { reason: 'race_no_row' },
+              );
               return throwError(
                 () => new ConflictException('Idempotency key race condition'),
               );
             }
 
             if (existing.requestHash !== requestHash) {
+              this.logIdempotencyLocally(
+                idempotencyKey,
+                request,
+                'replay_conflict',
+                { reason: 'same_key_different_request' },
+              );
               return throwError(
                 () =>
                   new ConflictException(
@@ -107,6 +153,12 @@ export class IdempotencyInterceptor implements NestInterceptor {
             }
 
             if (existing.status === IDEMPOTENCY_STATUS.PROCESSING) {
+              this.logIdempotencyLocally(
+                idempotencyKey,
+                request,
+                'replay_conflict',
+                { reason: 'still_processing' },
+              );
               return throwError(
                 () =>
                   new ConflictException(
@@ -122,17 +174,59 @@ export class IdempotencyInterceptor implements NestInterceptor {
             const replayBody = this.fromJson(existing.responseBody);
 
             if (existing.status === IDEMPOTENCY_STATUS.FAILED) {
+              this.logIdempotencyLocally(
+                idempotencyKey,
+                request,
+                'replay_prior_failure',
+                {
+                  httpStatus: replayCode,
+                  storedStatus: existing.status,
+                },
+              );
               const errorBody = replayBody ?? {
                 message: 'Idempotent request previously failed',
               };
               return throwError(() => new HttpException(errorBody, replayCode));
             }
 
+            this.logIdempotencyLocally(
+              idempotencyKey,
+              request,
+              'replay_cached_success',
+              {
+                httpStatus: replayCode,
+                storedStatus: existing.status,
+              },
+            );
             return of(replayBody);
           }),
         );
       }),
     );
+  }
+
+  private logIdempotencyLocally(
+    idempotencyKey: string,
+    request: RequestWithUser,
+    outcome: string,
+    extra?: Record<string, string | number | undefined>,
+  ): void {
+    if (process.env.NODE_ENV === 'production') {
+      return;
+    }
+    const parts = [
+      `Idempotency-Key=${idempotencyKey}`,
+      `${request.method} ${request.path}`,
+      `outcome=${outcome}`,
+    ];
+    if (extra) {
+      for (const [k, v] of Object.entries(extra)) {
+        if (v !== undefined) {
+          parts.push(`${k}=${v}`);
+        }
+      }
+    }
+    this.logger.log(parts.join(' | '));
   }
 
   private computeRequestHash(request: RequestWithUser): string {

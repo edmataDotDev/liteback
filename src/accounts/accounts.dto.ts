@@ -1,5 +1,12 @@
-import { IsInt, IsString, Min } from 'class-validator';
+import { IsInt, IsString, Length, Min } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+
+export class CreateAccountDto {
+  @ApiProperty({ example: 'USD', description: 'ISO 4217 currency code' })
+  @IsString()
+  @Length(3, 3)
+  currency: string;
+}
 
 export class DepositDto {
   @ApiProperty({ example: 'a1b2c3d4e5f6' })

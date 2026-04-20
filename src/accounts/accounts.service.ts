@@ -6,7 +6,12 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, TransactionType } from '@prisma/client';
-import { DepositDto, TransferDto, WithdrawDto } from './accounts.dto';
+import {
+  CreateAccountDto,
+  DepositDto,
+  TransferDto,
+  WithdrawDto,
+} from './accounts.dto';
 
 const accountSelect = {
   id: true,
@@ -88,6 +93,18 @@ export class AccountsService {
       throw new NotFoundException('Account not found');
     }
     return account;
+  }
+
+  async createMine(userPublicId: string, dto: CreateAccountDto) {
+    const customerId = await this.getCustomerIdByUserPublicId(userPublicId);
+    return this.prisma.account.create({
+      data: {
+        customerId,
+        currency: dto.currency,
+        balanceMinor: 0,
+      },
+      select: accountSelect,
+    });
   }
 
   async removeMineById(userPublicId: string, accountId: number): Promise<void> {

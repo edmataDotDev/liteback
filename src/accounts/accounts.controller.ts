@@ -18,7 +18,12 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { AccountsService } from './accounts.service';
 import { Idempotent } from '../idempotency/idempotency.decorator';
 import { IdempotencyInterceptor } from '../idempotency/idempotency.interceptor';
-import { DepositDto, TransferDto, WithdrawDto } from './accounts.dto';
+import {
+  CreateAccountDto,
+  DepositDto,
+  TransferDto,
+  WithdrawDto,
+} from './accounts.dto';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -41,6 +46,32 @@ export class AccountsController {
   @ApiOkResponse({ description: 'Array of owned accounts' })
   listMine(@CurrentUser('sub') userPublicId: string) {
     return this.accountsService.listMine(userPublicId);
+  }
+
+  @Post()
+  @UsePipes(
+    new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    }),
+  )
+  @Idempotent()
+  @UseInterceptors(IdempotencyInterceptor)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Create a new account for authenticated customer (idempotent)' })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: true,
+    description: 'UUID key used to guarantee idempotent execution',
+  })
+  @ApiBody({ type: CreateAccountDto })
+  @ApiOkResponse({ description: 'Created account payload (same shape as GET /accounts items)' })
+  createMine(
+    @CurrentUser('sub') userPublicId: string,
+    @Body() dto: CreateAccountDto,
+  ) {
+    return this.accountsService.createMine(userPublicId, dto);
   }
 
   @Get(':id')
