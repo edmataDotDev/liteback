@@ -29,9 +29,49 @@ model Customer {
   lastName  String @map("last_name")
   userId    Int    @unique @map("user_id")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accounts     Account[]
+  transactions Transaction[]
 
   @@map("customers")
+}
+
+model Account {
+  id           Int      @id @default(autoincrement())
+  customerId   Int      @map("customer_id")
+  /// Stored in minor units (e.g. 100 = 1.00). Non-negative by DB check constraint.
+  balanceMinor Int      @map("balance_minor")
+  currency     String
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  customer     Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@index([customerId])
+  @@map("accounts")
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+}
+
+model Transaction {
+  id         Int             @id @default(autoincrement())
+  customerId Int             @map("customer_id")
+  accountId  Int             @map("account_id")
+  type       TransactionType
+  /// Stored in minor units (e.g. 100 = 1.00). Must be positive.
+  amountMinor Int            @map("amount_minor")
+  createdAt  DateTime        @default(now()) @map("created_at")
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  account  Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([accountId])
+  @@map("transactions")
 }
 
 model Session {
