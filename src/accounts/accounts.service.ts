@@ -13,7 +13,9 @@ const accountSelect = {
 export class AccountsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private async getCustomerIdByUserPublicId(userPublicId: string): Promise<number> {
+  private async getCustomerIdByUserPublicId(
+    userPublicId: string,
+  ): Promise<number> {
     const user = await this.prisma.user.findUnique({
       where: { publicId: userPublicId },
       select: { id: true },

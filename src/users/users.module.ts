@@ -4,10 +4,12 @@ import { UsersService } from './users.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { JwtModule } from '@nestjs/jwt';
 import { JWT_SIGN_OPTIONS, jwtConstants } from './constants';
+import { IdempotencyModule } from '../idempotency/idempotency.module';
 
 @Module({
   imports: [
     PrismaModule,
+    IdempotencyModule,
     JwtModule.register({
       global: true,
       privateKey: jwtConstants.privateKey,

@@ -74,6 +74,18 @@ model Transaction {
   @@map("transactions")
 }
 
+model IdempotencyKey {
+  idempotencyKey String   @id @map("idempotency_key") @db.Uuid
+  requestHash    String   @map("request_hash")
+  status         String
+  responseCode   Int?     @map("response_code")
+  responseBody   Json?    @map("response_body")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("idempotency_keys")
+}
+
 model Session {
   id          Int       @id @default(autoincrement())
   userId      Int       @map("user_id")

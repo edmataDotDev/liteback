@@ -7,10 +7,13 @@ import {
   Param,
   ParseIntPipe,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { AccountsService } from './accounts.service';
+import { Idempotent } from '../idempotency/idempotency.decorator';
+import { IdempotencyInterceptor } from '../idempotency/idempotency.interceptor';
 
 @Controller('accounts')
 @UseGuards(JwtAuthGuard)
@@ -31,6 +34,8 @@ export class AccountsController {
   }
 
   @Delete(':id')
+  @Idempotent()
+  @UseInterceptors(IdempotencyInterceptor)
   @HttpCode(HttpStatus.NO_CONTENT)
   removeMineById(
     @CurrentUser('sub') userPublicId: string,
