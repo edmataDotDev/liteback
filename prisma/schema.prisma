@@ -38,6 +38,7 @@ model Customer {
 
 model Account {
   id           Int      @id @default(autoincrement())
+  publicId     String   @unique @default(dbgenerated("substr(replace(gen_random_uuid()::text, '-', ''), 1, 12)")) @map("public_id")
   customerId   Int      @map("customer_id")
   /// Stored in minor units (e.g. 100 = 1.00). Non-negative by DB check constraint.
   balanceMinor Int      @map("balance_minor")
