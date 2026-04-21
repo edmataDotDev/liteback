@@ -1,7 +1,10 @@
 import {
   Body,
   Controller,
+  HttpCode,
+  HttpStatus,
   Post,
+  UseGuards,
   UseInterceptors,
   UsePipes,
   ValidationPipe,
@@ -12,12 +15,16 @@ import { AuthTokens } from './users.types';
 import { Idempotent } from '../idempotency/idempotency.decorator';
 import { IdempotencyInterceptor } from '../idempotency/idempotency.interceptor';
 import {
+  ApiBearerAuth,
   ApiBody,
   ApiHeader,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
 
 @Controller('users')
 @ApiTags('users')
@@ -40,6 +47,21 @@ export class UsersController {
   })
   login(@Body() user: LoginUserDto): Promise<AuthTokens> {
     return this.usersService.login(user);
+  }
+
+  @Post('logout')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Logout current session (invalidates access and refresh for this session)',
+  })
+  @ApiNoContentResponse({ description: 'Session revoked' })
+  logout(
+    @CurrentUser('sub') userPublicId: string,
+    @CurrentUser('sessionId') sessionId: number,
+  ): Promise<void> {
+    return this.usersService.logout(userPublicId, sessionId);
   }
 
   @Post('register')

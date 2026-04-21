@@ -58,6 +58,7 @@ litebank/
 
 - **Registro:** crea `User` + `Customer` enlazado (email, nombre). Idempotente (`Idempotency-Key`).
 - **Login:** valida credenciales, crea `Session` + `RefreshToken` (hash en BD), devuelve `accessToken` (JWT) y `refreshToken` (hex).
+- **Logout:** `POST /users/logout` con Bearer; revoca la sesión actual (ver §3.4).
 - **Refresh:** rota el refresh previo, revoca sesión ante reutilización; nuevo par de tokens.
 
 El JWT lleva `sub` = `users.public_id` (UUID), no el entero `users.id`.
@@ -79,7 +80,8 @@ La lógica financiera delega en Prisma/BD (p. ej. restricciones de saldo); error
 
 ### 3.4 Autenticación HTTP (`src/auth`)
 
-- `JwtAuthGuard`: header `Authorization: Bearer <jwt>`, verificación RS256 con `iss` / `aud` fijos en código (`src/auth/jwt-claims.ts`).
+- `JwtAuthGuard`: header `Authorization: Bearer <jwt>`, verificación RS256 con `iss` / `aud` fijos en código (`src/auth/jwt-claims.ts`), claim **`sessionId`** y comprobación de fila `sessions` (no revocada, no expirada).
+- Revocación explícita con **`POST /users/logout`** (mismo controlador que login/register); tras eso el mismo access y los refresh de esa sesión fallan.
 - Access token: caducidad **15 minutos** (`src/users/constants.ts`).
 
 ### 3.5 Idempotencia (`src/idempotency`)
@@ -188,6 +190,7 @@ CI sugerido: `prisma migrate deploy` contra la BD de test y luego `npm run test:
 | [test/e2e/api-flow.e2e-spec.ts](../test/e2e/api-flow.e2e-spec.ts) | Flujo completo feliz (dos usuarios, transferencia, borrados). |
 | [test/e2e/api-errors.e2e-spec.ts](../test/e2e/api-errors.e2e-spec.ts) | Respuestas 401 / 400 / 404 / 409 esperadas. |
 | [test/e2e/idempotency-stress.e2e-spec.ts](../test/e2e/idempotency-stress.e2e-spec.ts) | Replays, claves distintas, paralelismo, fallo + replay, ráfaga. |
+| [test/e2e/auth-logout.e2e-spec.ts](../test/e2e/auth-logout.e2e-spec.ts) | `POST /users/logout`, access/refresh inválidos tras revocar sesión. |
 
 ### 6.4 Calidad y contratos
 
