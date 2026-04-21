@@ -14,7 +14,7 @@ Documento orientado a **generar o mantener un cliente HTTP**: rutas, métodos, c
 
 ### 1.1 JWT de acceso (Bearer)
 
-Rutas bajo **`/customers/*`** y **`/accounts/*`** exigen:
+Rutas bajo **`/customers/*`**, **`/accounts/*`** y **`POST /users/logout`** exigen:
 
 ```http
 Authorization: Bearer <access_token>
@@ -25,15 +25,25 @@ Authorization: Bearer <access_token>
 - El servidor valida **issuer** y **audience** fijos en código:
   - `iss`: `http://localhost:3000`
   - `aud`: `general`
-- Claims relevantes para autorización: **`sub`** — UUID del usuario (`users.public_id`), no el `id` numérico interno.
+- Claims relevantes:
+  - **`sub`** — UUID del usuario (`users.public_id`), no el `id` numérico interno.
+  - **`sessionId`** — entero, PK de la fila `sessions` asociada al login o al último refresh. El `JwtAuthGuard` comprueba en cada petición que la sesión exista, no esté revocada (`revoked_at` nulo) y no haya expirado; si no, **`401`** (p. ej. `Session revoked`, `Session expired`).
 
 Si falta el header, el token es inválido o expiró: **`401 Unauthorized`** con cuerpo estilo Nest (`{ "message": "...", "statusCode": 401 }`).
 
-### 1.2 Refresh token (opaco)
+### 1.2 Cerrar sesión (`POST /users/logout`)
+
+- **Auth:** Bearer JWT de la sesión que se desea cerrar.
+- **Cuerpo:** ninguno.
+- **204 No Content:** la sesión queda revocada (`sessions.revoked_at`). Los **refresh tokens** ligados a esa sesión dejan de ser válidos en `POST /users/refresh`, y el **mismo access token** deja de aceptarse en rutas protegidas (el guard detecta sesión revocada).
+- **401 Unauthorized:** token inválido/expirado, sesión ya revocada o expirada, o sesión no pertenece al `sub` del JWT.
+
+### 1.3 Refresh token (opaco)
 
 - Cadena hexadecimal aleatoria (64 caracteres en la implementación actual: 32 bytes en hex).
 - Se envía solo en **`POST /users/refresh`** en el cuerpo JSON.
 - Rotación: un uso exitoso de refresh **invalida** el token anterior a favor de uno nuevo en la misma respuesta.
+- Si la sesión está **revocada** (p. ej. tras `POST /users/logout`) o expirada, **`POST /users/refresh`** responde **`401 Unauthorized`** (mensaje tipo `Session invalid or expired`).
 
 ---
 
@@ -201,7 +211,16 @@ Cada elemento de `customers`:
 
 ---
 
-### 4.5 `GET /customers/me`
+### 4.5 `POST /users/logout`
+
+- **Auth:** Bearer JWT (sesión activa).
+- **Cuerpo:** ninguno.
+- **204 No Content:** sesión revocada; access y refresh de esa sesión dejan de valer (ver §1.1 y §1.3).
+- **401 Unauthorized:** token o sesión inválidos (incluye sesión ya revocada si se repite logout con el mismo access tras el primero).
+
+---
+
+### 4.6 `GET /customers/me`
 
 - **Auth:** Bearer JWT.
 - **200 OK:** objeto **Cliente** (§3.2).
@@ -209,7 +228,7 @@ Cada elemento de `customers`:
 
 ---
 
-### 4.6 `PATCH /customers/me`
+### 4.7 `PATCH /customers/me`
 
 - **Auth:** Bearer JWT.
 - **Cuerpo:** al menos **uno** de los campos opcionales:
@@ -228,21 +247,21 @@ Cada elemento de `customers`:
 
 ---
 
-### 4.7 `DELETE /customers/me`
+### 4.8 `DELETE /customers/me`
 
 - **Auth:** Bearer JWT.
 - **204 No Content:** perfil cliente eliminado (por reglas Prisma puede cascadear entidades relacionadas según esquema).
 
 ---
 
-### 4.8 `GET /accounts`
+### 4.9 `GET /accounts`
 
 - **Auth:** Bearer JWT.
 - **200 OK:** array de **Cuenta** (§3.3), ordenado por `id` ascendente.
 
 ---
 
-### 4.9 `POST /accounts`
+### 4.10 `POST /accounts`
 
 - **Auth:** Bearer JWT.
 - **Cabecera:** `Idempotency-Key` (UUID), obligatoria.
@@ -261,7 +280,7 @@ Cada elemento de `customers`:
 
 ---
 
-### 4.10 `GET /accounts/:id`
+### 4.11 `GET /accounts/:id`
 
 - **Auth:** Bearer JWT.
 - **Parámetro:** `id` entero — PK interna de cuenta, **debe pertenecer** al cliente del usuario autenticado.
@@ -270,7 +289,7 @@ Cada elemento de `customers`:
 
 ---
 
-### 4.11 `DELETE /accounts/:id`
+### 4.12 `DELETE /accounts/:id`
 
 - **Auth:** Bearer JWT.
 - **Cabecera:** `Idempotency-Key` (UUID), obligatoria.
@@ -279,7 +298,7 @@ Cada elemento de `customers`:
 
 ---
 
-### 4.12 `POST /accounts/deposit`
+### 4.13 `POST /accounts/deposit`
 
 - **Auth:** Bearer JWT.
 - **Cabecera:** `Idempotency-Key` (UUID), obligatoria.
@@ -306,7 +325,7 @@ Cada elemento de `customers`:
 
 ---
 
-### 4.13 `POST /accounts/withdraw`
+### 4.14 `POST /accounts/withdraw`
 
 - **Auth:** Bearer JWT.
 - **Cabecera:** `Idempotency-Key` (UUID), obligatoria.
@@ -326,7 +345,7 @@ Cada elemento de `customers`:
 
 ---
 
-### 4.14 `POST /accounts/transfer`
+### 4.15 `POST /accounts/transfer`
 
 - **Auth:** Bearer JWT.
 - **Cabecera:** `Idempotency-Key` (UUID), obligatoria.
@@ -384,9 +403,10 @@ Cada elemento de `customers`:
 1. Tras `login` o `refresh`, guardar **`accessToken`** y **`refreshToken`** de forma segura.
 2. Enviar **`Authorization: Bearer …`** en rutas protegidas.
 3. Renovar access con **`POST /users/refresh`** antes de expirar (15 min) o al recibir `401` por expiración.
-4. Para rutas idempotentes, generar un **UUID por operación de negocio** (no reutilizar entre operaciones distintas) y reutilizarlo solo en **reintentos** de la misma operación.
-5. Montos: siempre enteros en **`amountMinor`** / **`balanceMinor`** según reglas de §3.3 y §3.4.
-6. Referencias de cuenta en movimientos: usar **`publicId`**, no el `id` numérico de ruta (salvo en `GET/DELETE /accounts/:id`).
+4. Al cerrar sesión en el cliente, llamar **`POST /users/logout`** con el Bearer actual y descartar ambos tokens en local.
+5. Para rutas idempotentes, generar un **UUID por operación de negocio** (no reutilizar entre operaciones distintas) y reutilizarlo solo en **reintentos** de la misma operación.
+6. Montos: siempre enteros en **`amountMinor`** / **`balanceMinor`** según reglas de §3.3 y §3.4.
+7. Referencias de cuenta en movimientos: usar **`publicId`**, no el `id` numérico de ruta (salvo en `GET/DELETE /accounts/:id`).
 
 ---
 
@@ -398,3 +418,4 @@ Mantén este apartado al evolucionar el contrato (nuevas rutas, cambios de códi
 |---------|--------|---------|
 | 1.0.0 | (fecha de publicación) | Contrato inicial alineado con NestJS + Swagger `1.0.0`. |
 | 1.1.0 | — | `POST /accounts` idempotente para crear cuenta (`balanceMinor` inicial 0). |
+| 1.2.0 | — | JWT con `sessionId`; guard valida sesión; `POST /users/logout` revoca sesión. |

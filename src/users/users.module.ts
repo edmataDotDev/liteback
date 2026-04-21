@@ -5,6 +5,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { JwtModule } from '@nestjs/jwt';
 import { JWT_SIGN_OPTIONS, jwtConstants } from './constants';
 import { IdempotencyModule } from '../idempotency/idempotency.module';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Module({
   imports: [
@@ -18,6 +19,6 @@ import { IdempotencyModule } from '../idempotency/idempotency.module';
     }),
   ],
   controllers: [UsersController],
-  providers: [UsersService],
+  providers: [UsersService, JwtAuthGuard],
 })
 export class UsersModule {}

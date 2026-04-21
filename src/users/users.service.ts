@@ -120,6 +120,7 @@ export class UsersService {
           iss: JWT_ISSUER,
           aud: JWT_AUDIENCE,
           sub: session.user.publicId,
+          sessionId: session.id,
           nbf: nowSec,
           iat: nowSec,
         });
@@ -157,17 +158,8 @@ export class UsersService {
       throw new UnauthorizedException('No valid credentials');
     }
 
-    const nowSec = Math.floor(Date.now() / 1000);
-    const accessToken = this.jwtService.sign({
-      iss: JWT_ISSUER,
-      aud: JWT_AUDIENCE,
-      sub: user?.publicId,
-      nbf: nowSec,
-      iat: nowSec,
-    });
-
     const refreshToken = randomBytes(32).toString('hex');
-    await this.prisma.session.create({
+    const session = await this.prisma.session.create({
       data: {
         userId: user.id,
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
@@ -178,12 +170,41 @@ export class UsersService {
           },
         },
       },
+      select: { id: true },
+    });
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    const accessToken = this.jwtService.sign({
+      iss: JWT_ISSUER,
+      aud: JWT_AUDIENCE,
+      sub: user?.publicId,
+      sessionId: session.id,
+      nbf: nowSec,
+      iat: nowSec,
     });
 
     return {
       accessToken,
       refreshToken,
     };
+  }
+
+  async logout(userPublicId: string, sessionId: number): Promise<void> {
+    const session = await this.prisma.session.findFirst({
+      where: { id: sessionId, user: { publicId: userPublicId } },
+      select: { id: true, revokedAt: true, expiresAt: true },
+    });
+    if (!session) {
+      throw new UnauthorizedException('Session not found');
+    }
+    const now = new Date();
+    if (session.revokedAt != null || session.expiresAt <= now) {
+      throw new UnauthorizedException('Session invalid or expired');
+    }
+    await this.prisma.session.update({
+      where: { id: session.id },
+      data: { revokedAt: now },
+    });
   }
 
   async register(dto: CreateUserDto) {
